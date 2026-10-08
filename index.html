@@ -1,0 +1,2132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Conselho360 — Acompanhamento pedagógico</title>
+
+<!-- Tailwind -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          brand: {
+            900: '#0f2447',
+            800: '#152c56',
+            700: '#1e3a8a',
+            500: '#3b82f6',
+            100: '#dbeafe',
+          },
+        },
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2"></script>
+
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<style>
+  html, body, #root { height: 100%; }
+  body { background: #f8fafc; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  .fade-in { animation: fade .25s ease-out; }
+  @keyframes fade { from{opacity:0; transform: translateY(4px)} to{opacity:1;transform:none} }
+  .skeleton { background: linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 37%,#e2e8f0 63%); background-size: 400% 100%; animation: sk 1.2s infinite; }
+  @keyframes sk { 0%{background-position:100% 50%} 100%{background-position:0 50%} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+/* =========================================================================
+   ⚙️  CONFIGURAÇÃO
+   ========================================================================= */
+// ⚠️ SEGURANÇA: só a URL e a Publishable Key vão para o navegador.
+// NUNCA coloque a SUPABASE_SECRET_KEY (service_role) aqui — ela ignora RLS.
+const SUPABASE_URL      = "https://hnsmzvqwluxndusafeft.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_EibS1XZocmu8VxdRYYip4g_8v4BArsr";
+
+/* =========================================================================
+   🧩  SETUP
+   ========================================================================= */
+const { useState, useEffect, useRef, createContext, useContext } = React;
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false,   // ✅ FIX: hash router + detectSessionInUrl conflitavam
+    storageKey: 'conselho360-auth',
+  },
+});
+
+/* ---------- Ícones (SVG inline) ---------- */
+const P = {
+  dashboard:  "M3 12l9-9 9 9M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10",
+  turmas:     "M22 10L12 5 2 10l10 5 10-5zM6 12v5c0 1 3 3 6 3s6-2 6-3v-5",
+  alunos:     "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a4 4 0 100 8 4 4 0 000-8zm14 14v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
+  avaliacoes: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
+  dificuldades:"M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z",
+  destaques:  "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
+  encaminhamentos:"M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z",
+  acoes:      "M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11",
+  reunioes:   "M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z",
+  relatorios: "M3 3v18h18M7 14l4-4 4 4 6-6",
+  usuarios:   "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 7a4 4 0 100 8 4 4 0 000-8zm13 14v-2a4 4 0 00-3-3.87",
+  config:     "M12 15a3 3 0 100-6 3 3 0 000 6zm7.4-3a7.4 7.4 0 00-.13-1.37l2.11-1.65-2-3.46-2.5.9a7.4 7.4 0 00-2.37-1.37L14 2h-4l-.51 2.68a7.4 7.4 0 00-2.37 1.37l-2.5-.9-2 3.46 2.11 1.65A7.4 7.4 0 004.6 12c0 .47.05.92.13 1.37L2.62 15l2 3.46 2.5-.9a7.4 7.4 0 002.37 1.37L10 22h4l.51-2.68a7.4 7.4 0 002.37-1.37l2.5.9 2-3.46-2.11-1.65c.08-.45.13-.9.13-1.37z",
+  logout:     "M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9",
+  menu:       "M3 6h18M3 12h18M3 18h18",
+  close:      "M6 6l12 12M6 18L18 6",
+  plus:       "M12 5v14M5 12h14",
+  search:     "M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z",
+  check:      "M20 6L9 17l-5-5",
+  x:          "M18 6L6 18M6 6l12 12",
+  trash:      "M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6",
+  arrowRight: "M5 12h14M12 5l7 7-7 7",
+  chart:      "M18 20V10M12 20V4M6 20v-6",
+};
+function Icon({ name, size = 18, className = "" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d={P[name] || P.dashboard} />
+    </svg>
+  );
+}
+
+/* ---------- Auth Context ---------- */
+const AuthCtx = createContext(null);
+
+function friendlyError(error) {
+  const msg = error?.message || 'Erro inesperado.';
+  if (/invalid login credentials/i.test(msg)) return 'E-mail ou senha inválidos.';
+  if (/email not confirmed/i.test(msg)) return 'Confirme seu e-mail antes de entrar.';
+  if (/user already registered/i.test(msg)) return 'Este e-mail já está cadastrado.';
+  if (/password should be at least/i.test(msg)) return 'A senha precisa ter pelo menos 6 caracteres.';
+  if (/tempo esgotado/i.test(msg)) return msg;
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(msg))
+    return 'Não foi possível conectar ao Supabase. Verifique a internet e se o projeto está ativo.';
+  if (/jwt|apikey|unauthorized|invalid api key/i.test(msg))
+    return 'Chave do Supabase inválida. Confirme a URL e a Publishable Key no topo do arquivo.';
+  return msg;
+}
+
+// ✅ FIX: evita ficar preso em "Aguarde…" quando a rede/projeto está pendurado.
+function withTimeout(promise, ms, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(message)), ms)
+    ),
+  ]);
+}
+
+function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  async function loadProfile(id, authUser = null) {
+    try {
+      const { data, error: profileError } = await sb
+        .from('usuarios')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (profileError) throw profileError;
+
+      if (data) {
+        setUser(data);
+        setError('');
+        return data;
+      }
+
+      // Trigger creates this row on signup. Fallback prevents a blank screen.
+      const fallback = {
+        id,
+        nome: authUser?.user_metadata?.nome || authUser?.email?.split('@')[0] || 'Usuário',
+        email: authUser?.email || '',
+        tipo: 'professor',
+      };
+      setUser(fallback);
+      return fallback;
+    } catch (e) {
+      console.error('loadProfile', e);
+      setError(friendlyError(e));
+      const fallback = authUser ? {
+        id,
+        nome: authUser.user_metadata?.nome || authUser.email?.split('@')[0] || 'Usuário',
+        email: authUser.email || '',
+        tipo: 'professor',
+      } : null;
+      setUser(fallback);
+      return fallback;
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+
+    sb.auth.getSession()
+      .then(async ({ data, error: sessionError }) => {
+        if (sessionError) throw sessionError;
+        if (!mounted) return;
+
+        if (data.session?.user) {
+          await loadProfile(data.session.user.id, data.session.user);
+        } else {
+          setUser(null);
+        }
+      })
+      .catch((e) => {
+        console.error('getSession', e);
+        if (mounted) setError(friendlyError(e));
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    const { data: sub } = sb.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+
+      if (session?.user) {
+        // Do not await a Supabase request inside onAuthStateChange.
+        setTimeout(() => {
+          if (mounted) loadProfile(session.user.id, session.user);
+        }, 0);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      sub?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  const api = {
+    user,
+    loading,
+    error,
+
+    // ✅ FIX: timeout de 15s em todas as chamadas de auth.
+    async signIn(email, senha) {
+      const { data, error } = await withTimeout(
+        sb.auth.signInWithPassword({ email: email.trim(), password: senha }),
+        15000,
+        'Tempo esgotado ao conectar com o Supabase. Verifique sua internet e se o projeto está ativo.'
+      );
+      if (error) throw error;
+      if (data?.user) loadProfile(data.user.id, data.user);
+    },
+
+    async signUp(nome, email, senha) {
+      const { error } = await withTimeout(
+        sb.auth.signUp({
+          email: email.trim(),
+          password: senha,
+          options: { data: { nome: nome.trim() } },
+        }),
+        15000,
+        'Tempo esgotado ao criar a conta. Verifique sua internet e se o projeto está ativo.'
+      );
+      if (error) throw error;
+    },
+
+    async reset(email) {
+      const { error } = await withTimeout(
+        sb.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: `${window.location.origin}${window.location.pathname}#/login`,
+        }),
+        15000,
+        'Tempo esgotado ao enviar o e-mail de recuperação.'
+      );
+      if (error) throw error;
+    },
+
+    async signOut() {
+      await sb.auth.signOut();
+      setUser(null);
+    },
+  };
+
+  return <AuthCtx.Provider value={api}>{children}</AuthCtx.Provider>;
+}
+
+const useAuth = () => useContext(AuthCtx);
+
+/* ---------- Router (hash) ---------- */
+function useRoute() {
+  const [hash, setHash] = useState(window.location.hash || '#/dashboard');
+  useEffect(() => {
+    const onChange = () => setHash(window.location.hash || '#/dashboard');
+    window.addEventListener('hashchange', onChange);
+    return () => window.removeEventListener('hashchange', onChange);
+  }, []);
+  const path = hash.replace(/^#/, '') || '/dashboard';
+  const [base, id] = path.split('/').filter(Boolean);
+  return { path, base: '/' + (base || 'dashboard'), id };
+}
+
+/* ---------- Utils ---------- */
+function fmtDate(s) { if (!s) return '—'; try { return new Date(s).toLocaleDateString('pt-BR'); } catch { return s; } }
+function fmtDateTime(s) { if (!s) return '—'; try { return new Date(s).toLocaleString('pt-BR'); } catch { return s; } }
+
+/* =========================================================================
+   🧱 COMPONENTES BASE
+   ========================================================================= */
+function StatusBadge({ status }) {
+  const map = {
+    pendente: 'bg-amber-100 text-amber-800',
+    em_acompanhamento: 'bg-purple-100 text-purple-800',
+    resolvido: 'bg-emerald-100 text-emerald-800',
+    encaminhado: 'bg-orange-100 text-orange-800',
+    rascunho: 'bg-slate-100 text-slate-700',
+    finalizada: 'bg-blue-100 text-blue-800',
+    enviada: 'bg-emerald-100 text-emerald-800',
+    ativo: 'bg-emerald-100 text-emerald-800',
+  };
+  return (
+    <span className={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${map[status] || 'bg-slate-100 text-slate-700'}`}>
+      {(status || '').replace(/_/g, ' ')}
+    </span>
+  );
+}
+
+function StatCard({ label, value, icon, tone = 'blue' }) {
+  const tones = {
+    blue:'bg-blue-50 text-blue-700', green:'bg-emerald-50 text-emerald-700',
+    purple:'bg-purple-50 text-purple-700', orange:'bg-orange-50 text-orange-700',
+    red:'bg-rose-50 text-rose-700', slate:'bg-slate-100 text-slate-700',
+  };
+  return (
+    <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex items-center gap-4">
+      <div className={`p-3 rounded-xl ${tones[tone]}`}><Icon name={icon} size={22} /></div>
+      <div className="min-w-0">
+        <p className="text-sm text-slate-500 truncate">{label}</p>
+        <p className="text-2xl font-semibold text-slate-800">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ title, description, icon = 'dashboard' }) {
+  return (
+    <div className="p-10 text-center bg-white rounded-2xl border border-dashed border-slate-200">
+      <Icon name={icon} size={32} className="mx-auto text-slate-400" />
+      <p className="mt-3 font-medium text-slate-700">{title}</p>
+      {description && <p className="text-sm text-slate-500 mt-1">{description}</p>}
+    </div>
+  );
+}
+
+function Skeleton({ className = 'h-6 w-full' }) {
+  return <div className={`skeleton rounded-lg ${className}`} />;
+}
+
+function Modal({ open, onClose, title, children, footer }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl fade-in">
+        <div className="flex items-center justify-between p-5 border-b">
+          <h3 className="text-lg font-semibold text-slate-800">{title}</h3>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100"><Icon name="close" size={18} /></button>
+        </div>
+        <div className="p-5 space-y-3">{children}</div>
+        {footer && <div className="flex justify-end gap-2 p-4 border-t bg-slate-50 rounded-b-2xl">{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <label className="block">
+      <span className="text-sm text-slate-600">{label}</span>
+      <div className="mt-1">{children}</div>
+    </label>
+  );
+}
+const inputCls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent";
+
+function Toast({ msg, tone = 'blue', onClose }) {
+  useEffect(() => { const t = setTimeout(onClose, 3200); return () => clearTimeout(t); }, [onClose]);
+  const tones = { blue:'bg-blue-600', green:'bg-emerald-600', red:'bg-rose-600', orange:'bg-orange-500' };
+  return (
+    <div className="fixed bottom-4 right-4 z-[100] fade-in">
+      <div className={`${tones[tone]} text-white px-4 py-3 rounded-xl shadow-lg text-sm max-w-sm`}>
+        {msg}
+      </div>
+    </div>
+  );
+}
+function useToast() {
+  const [toast, setToast] = useState(null);
+  const show = (msg, tone = 'blue') => setToast({ msg, tone });
+  const node = toast ? <Toast {...toast} onClose={() => setToast(null)} /> : null;
+  return { show, node };
+}
+
+/* ---------- Supabase UI helpers ---------- */
+function getErrorMessage(error) {
+  return friendlyError(error);
+}
+
+function InlineError({ message }) {
+  if (!message) return null;
+  return (
+    <div className="mb-4 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+      {message}
+    </div>
+  );
+}
+
+/* =========================================================================
+   🧭 SIDEBAR + LAYOUT
+   ========================================================================= */
+const MENU = [
+  { to:'/dashboard', label:'Dashboard', icon:'dashboard' },
+  { to:'/turmas', label:'Turmas', icon:'turmas' },
+  { to:'/alunos', label:'Alunos', icon:'alunos' },
+  { to:'/avaliacoes', label:'Avaliações', icon:'avaliacoes' },
+  { to:'/dificuldades', label:'Dificuldades', icon:'dificuldades' },
+  { to:'/destaques', label:'Destaques', icon:'destaques' },
+  { to:'/encaminhamentos', label:'Encaminhamentos', icon:'encaminhamentos' },
+  { to:'/acoes', label:'Ações', icon:'acoes' },
+  { to:'/reunioes', label:'Reuniões', icon:'reunioes' },
+  { to:'/relatorios', label:'Relatórios', icon:'relatorios' },
+];
+const MENU_ADMIN = [
+  { to:'/usuarios', label:'Usuários', icon:'usuarios' },
+  { to:'/configuracoes', label:'Configurações', icon:'config' },
+];
+
+function Sidebar({ onClose }) {
+  const { user, signOut } = useAuth();
+  const { base } = useRoute();
+  const items = user?.tipo === 'admin' ? [...MENU, ...MENU_ADMIN] : MENU;
+  return (
+    <aside className="h-full w-64 bg-[#0f2447] text-white flex flex-col">
+      <div className="p-5 border-b border-white/10">
+        <h1 className="text-xl font-bold tracking-tight">Conselho<span className="text-blue-400">360</span></h1>
+        <p className="text-xs text-blue-200 mt-1">Acompanhamento e melhoria da aprendizagem</p>
+      </div>
+      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+        {items.map(({ to, label, icon }) => {
+          const active = base === to;
+          return (
+            <a key={to} href={`#${to}`} onClick={onClose}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
+                active ? 'bg-blue-600 text-white shadow' : 'text-blue-100 hover:bg-white/10'
+              }`}>
+              <Icon name={icon} size={18} /> {label}
+            </a>
+          );
+        })}
+      </nav>
+      <div className="p-4 border-t border-white/10">
+        <div className="mb-3 flex items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-sm font-semibold">
+            {(user?.nome || '?').charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium truncate">{user?.nome}</p>
+            <p className="text-xs text-blue-200 capitalize">{user?.tipo}</p>
+          </div>
+        </div>
+        <button onClick={signOut}
+          className="w-full flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 rounded-lg py-2 text-sm transition">
+          <Icon name="logout" size={16} /> Sair
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function Layout({ children }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="min-h-screen flex bg-slate-50">
+      <div className="hidden md:block"><Sidebar /></div>
+      {open && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
+          <div className="relative z-50 h-full"><Sidebar onClose={() => setOpen(false)} /></div>
+        </div>
+      )}
+      <main className="flex-1 min-w-0">
+        <header className="md:hidden flex items-center justify-between p-4 bg-white border-b sticky top-0 z-30">
+          <button onClick={() => setOpen(true)} className="p-1"><Icon name="menu" /></button>
+          <span className="font-semibold text-slate-800">Conselho<span className="text-blue-600">360</span></span>
+          <span className="w-6" />
+        </header>
+        <div className="p-4 md:p-8 max-w-7xl mx-auto fade-in">{children}</div>
+      </main>
+    </div>
+  );
+}
+
+/* =========================================================================
+   🔐 LOGIN
+   ========================================================================= */
+function Login() {
+  const { signIn, signUp, reset, error: authError } = useAuth();
+  const [mode, setMode] = useState('login');
+  const [nome, setNome] = useState('');
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const [msg, setMsg] = useState({ text:'', tone:'slate' });
+  const [loading, setLoading] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    setMsg({ text:'', tone:'slate' });
+    setLoading(true);
+    try {
+      if (mode === 'login') {
+        await signIn(email, senha);
+        window.location.hash = '#/dashboard';
+      } else if (mode === 'signup') {
+        await signUp(nome, email, senha);
+        setMsg({ text:'Cadastro realizado! Faça login.', tone:'green' });
+        setMode('login');
+      } else {
+        await reset(email);
+        setMsg({ text:'Link de recuperação enviado ao seu e-mail.', tone:'green' });
+      }
+    } catch (err) {
+      setMsg({ text: friendlyError(err), tone:'red' });
+    } finally { setLoading(false); }
+  }
+  const toneCls = { slate:'text-slate-600', green:'text-emerald-700', red:'text-rose-700' };
+
+  return (
+    <div className="min-h-screen grid md:grid-cols-2">
+      <div className="hidden md:flex flex-col justify-between p-12 text-white"
+           style={{ background: 'linear-gradient(135deg,#0f2447 0%,#1e3a8a 60%,#3b82f6 100%)' }}>
+        <div>
+          <h1 className="text-3xl font-bold">Conselho<span className="text-blue-300">360</span></h1>
+          <p className="text-blue-100 mt-2">Acompanhamento, análise e melhoria da aprendizagem</p>
+        </div>
+        <div className="space-y-3 text-sm text-blue-100">
+          <p>• Avaliação por período e turma</p>
+          <p>• Registro de dificuldades e destaques</p>
+          <p>• Encaminhamentos e acompanhamento</p>
+          <p>• Reuniões do conselho de classe</p>
+        </div>
+        <p className="text-xs text-blue-200">© 2026 Conselho360</p>
+      </div>
+
+      <div className="flex items-center justify-center p-6">
+        <form onSubmit={submit} className="w-full max-w-md bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
+          <h2 className="text-2xl font-semibold mb-1 text-slate-800">
+            {mode === 'login' ? 'Entrar' : mode === 'signup' ? 'Criar conta' : 'Recuperar senha'}
+          </h2>
+          <p className="text-sm text-slate-500 mb-6">
+            {mode === 'login' ? 'Acesse o painel pedagógico.' :
+             mode === 'signup' ? 'Cadastre-se para começar.' : 'Informe seu e-mail.'}
+          </p>
+
+          {mode === 'signup' && (
+            <div className="mb-3">
+              <Field label="Nome"><input className={inputCls} value={nome} onChange={e => setNome(e.target.value)} required /></Field>
+            </div>
+          )}
+          <div className="mb-3">
+            <Field label="E-mail"><input type="email" className={inputCls} value={email} onChange={e => setEmail(e.target.value)} required /></Field>
+          </div>
+          {mode !== 'reset' && (
+            <div className="mb-4">
+              <Field label="Senha"><input type="password" className={inputCls} value={senha} onChange={e => setSenha(e.target.value)} required minLength={6} /></Field>
+            </div>
+          )}
+
+          {authError && !msg.text && <p className="text-sm mb-3 text-rose-700">{authError}</p>}
+
+           {msg.text && <p className={`text-sm mb-3 ${toneCls[msg.tone]}`}>{msg.text}</p>}
+
+          <button disabled={loading}
+            className="w-full bg-blue-700 hover:bg-blue-800 disabled:opacity-60 text-white py-2.5 rounded-lg font-medium transition">
+            {loading ? 'Aguarde…' : mode === 'login' ? 'Entrar' : mode === 'signup' ? 'Cadastrar' : 'Enviar link'}
+          </button>
+
+          <div className="mt-4 flex justify-between text-sm">
+            {mode !== 'login' && <button type="button" onClick={() => setMode('login')} className="text-blue-700 font-medium">Voltar</button>}
+            {mode === 'login' && (
+              <>
+                <button type="button" onClick={() => setMode('signup')} className="text-blue-700 font-medium">Criar conta</button>
+                <button type="button" onClick={() => setMode('reset')} className="text-slate-500">Esqueci a senha</button>
+              </>
+            )}
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   📊 DASHBOARD
+   ========================================================================= */
+function ChartCanvas({ type, data, options }) {
+  const ref = useRef(null);
+  const chartRef = useRef(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    if (chartRef.current) chartRef.current.destroy();
+    chartRef.current = new Chart(ref.current, { type, data, options });
+    return () => { if (chartRef.current) chartRef.current.destroy(); };
+  }, [type, JSON.stringify(data), JSON.stringify(options)]);
+  return <canvas ref={ref} />;
+}
+
+function Dashboard() {
+  const { user } = useAuth();
+  const { show, node } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ turmas:0, alunos:0, avalPend:0, avalConc:0 });
+  const [difData, setDifData] = useState([]);
+  const [desData, setDesData] = useState([]);
+  const [atencao, setAtencao] = useState([]);
+  const [encAbertos, setEncAbertos] = useState([]);
+  const [reunioes, setReunioes] = useState([]);
+
+  useEffect(() => { load(); }, []);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const results = await Promise.all([
+        sb.from('turmas').select('id', { count:'exact', head:true }),
+        sb.from('alunos').select('id', { count:'exact', head:true }),
+        sb.from('avaliacoes').select('status'),
+        sb.from('dificuldades').select('tipo,status'),
+        sb.from('destaques').select('motivo'),
+        sb.from('encaminhamentos').select('id,descricao,status,prazo,alunos(nome)').neq('status','resolvido').order('prazo',{ascending:true, nullsFirst:false}).limit(6),
+        sb.from('reunioes').select('id,data,periodo,turmas(nome)').order('data',{ascending:false}).limit(5),
+      ]);
+      const firstError = results.find(r => r.error)?.error;
+      if (firstError) throw firstError;
+      const [t, a, av, d, de, enc, re] = results;
+      setStats({
+        turmas: t.count || 0,
+        alunos: a.count || 0,
+        avalPend: (av.data || []).filter(x => x.status === 'rascunho').length,
+        avalConc: (av.data || []).filter(x => x.status && x.status !== 'rascunho').length,
+      });
+      const countBy = (arr, key) => {
+        const m = {};
+        arr.forEach(i => { m[i[key]] = (m[i[key]] || 0) + 1; });
+        return Object.entries(m).map(([k, v]) => ({ label: k.replace(/_/g,' '), total: v }));
+      };
+      setDifData(countBy(d.data || [], 'tipo'));
+      setDesData(countBy(de.data || [], 'motivo'));
+
+      const { data: difs } = await sb.from('dificuldades')
+        .select('aluno_id, tipo, descricao, status, alunos(nome)')
+        .neq('status','resolvido').limit(8);
+      setAtencao(difs || []);
+      setEncAbertos(enc.data || []);
+      setReunioes(re.data || []);
+    } catch (e) { console.error(e); show(getErrorMessage(e), 'red'); }
+    finally { setLoading(false); }
+  }
+
+  const palette = ['#1e3a8a','#3b82f6','#8b5cf6','#f97316','#ef4444','#10b981','#f59e0b'];
+  const difChart = {
+    labels: difData.map(d => d.label),
+    datasets: [{ label:'Registros', data: difData.map(d => d.total), backgroundColor: palette, borderRadius: 8, maxBarThickness: 40 }],
+  };
+  const desChart = {
+    labels: desData.map(d => d.label),
+    datasets: [{ data: desData.map(d => d.total), backgroundColor: palette, borderWidth: 0 }],
+  };
+
+  return (
+    <div className="space-y-6">
+      {node}
+      <header>
+        <h1 className="text-2xl md:text-3xl font-semibold text-slate-800">
+          Olá, {user?.nome?.split(' ')[0] || 'professor'} 👋
+        </h1>
+        <p className="text-slate-500">Visão geral do Conselho360</p>
+      </header>
+
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => <Skeleton key={i} className="h-24" />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard label="Turmas" value={stats.turmas} icon="turmas" tone="blue" />
+          <StatCard label="Alunos" value={stats.alunos} icon="alunos" tone="green" />
+          <StatCard label="Avaliações pendentes" value={stats.avalPend} icon="avaliacoes" tone="orange" />
+          <StatCard label="Avaliações concluídas" value={stats.avalConc} icon="avaliacoes" tone="purple" />
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+          <h2 className="font-semibold mb-3 text-slate-800 flex items-center gap-2">
+            <Icon name="chart" size={18} className="text-blue-700" /> Principais dificuldades
+          </h2>
+          {difData.length === 0
+            ? <EmptyState title="Sem registros de dificuldades" icon="dificuldades" />
+            : <div className="h-64"><ChartCanvas type="bar" data={difChart} options={{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }} /></div>}
+        </section>
+
+        <section className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+          <h2 className="font-semibold mb-3 text-slate-800 flex items-center gap-2">
+            <Icon name="destaques" size={18} className="text-amber-500" /> Destaques positivos
+          </h2>
+          {desData.length === 0
+            ? <EmptyState title="Sem destaques registrados" icon="destaques" />
+            : <div className="h-64"><ChartCanvas type="doughnut" data={desChart} options={{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom' } } }} /></div>}
+        </section>
+
+        <section className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+          <h2 className="font-semibold mb-3 text-slate-800 flex items-center gap-2">
+            <Icon name="dificuldades" size={18} className="text-rose-600" /> Alunos que precisam de atenção
+          </h2>
+          {atencao.length === 0
+            ? <EmptyState title="Nenhum aluno em atenção" icon="check" />
+            : (
+              <ul className="divide-y divide-slate-100">
+                {atencao.map((a, i) => (
+                  <li key={i} className="py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-800 truncate">{a.alunos?.nome}</p>
+                      <p className="text-xs text-slate-500 truncate capitalize">
+                        {(a.tipo || '').replace(/_/g,' ')} — {a.descricao}
+                      </p>
+                    </div>
+                    <StatusBadge status={a.status} />
+                  </li>
+                ))}
+              </ul>
+            )}
+        </section>
+
+        <section className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+          <h2 className="font-semibold mb-3 text-slate-800 flex items-center gap-2">
+            <Icon name="encaminhamentos" size={18} className="text-orange-600" /> Encaminhamentos em aberto
+          </h2>
+          {encAbertos.length === 0
+            ? <EmptyState title="Sem encaminhamentos pendentes" icon="check" />
+            : (
+              <ul className="divide-y divide-slate-100">
+                {encAbertos.map(e => (
+                  <li key={e.id} className="py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-800 truncate">{e.alunos?.nome}</p>
+                      <p className="text-xs text-slate-500 truncate">{e.descricao}</p>
+                    </div>
+                    <StatusBadge status={e.status} />
+                  </li>
+                ))}
+              </ul>
+            )}
+        </section>
+
+        <section className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm lg:col-span-2">
+          <h2 className="font-semibold mb-3 text-slate-800 flex items-center gap-2">
+            <Icon name="reunioes" size={18} className="text-purple-600" /> Reuniões recentes
+          </h2>
+          {reunioes.length === 0
+            ? <EmptyState title="Sem reuniões agendadas" />
+            : (
+              <ul className="divide-y divide-slate-100">
+                {reunioes.map(r => (
+                  <li key={r.id} className="py-3 flex justify-between text-sm">
+                    <span className="font-medium text-slate-800">{r.turmas?.nome || 'Turma'} — {r.periodo}</span>
+                    <span className="text-slate-500">{fmtDateTime(r.data)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   🏫 TURMAS
+   ========================================================================= */
+function Turmas() {
+  const { user } = useAuth();
+  const { show, node } = useToast();
+  const [items, setItems] = useState([]);
+  const [alunosCount, setAlunosCount] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ nome:'', ano:new Date().getFullYear().toString(), periodo:'Manhã' });
+  const canEdit = user?.tipo === 'admin';
+
+  useEffect(() => { load(); }, []);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const [t, a] = await Promise.all([
+        sb.from('turmas').select('*').order('nome'),
+        sb.from('alunos').select('turma_id'),
+      ]);
+      setItems(t.data || []);
+      const cnt = {};
+      (a.data || []).forEach(x => { cnt[x.turma_id] = (cnt[x.turma_id] || 0) + 1; });
+      setAlunosCount(cnt);
+    } catch (e) { console.error(e); show(getErrorMessage(e), 'red'); }
+    finally { setLoading(false); }
+  }
+  async function criar() {
+    if (!form.nome) return;
+    const { error } = await sb.from('turmas').insert({ ...form, nome: form.nome.trim(), ano: form.ano.trim() });
+    if (error) return show(getErrorMessage(error), 'red');
+    show('Turma criada!', 'green');
+    setModal(false); setForm({ nome:'', ano:new Date().getFullYear().toString(), periodo:'Manhã' }); load();
+  }
+  async function excluir(id) {
+    if (!confirm('Excluir esta turma? Alunos vinculados também serão removidos.')) return;
+    const { error } = await sb.from('turmas').delete().eq('id', id);
+    if (error) return show(getErrorMessage(error), 'red');
+    show('Turma excluída.', 'orange'); load();
+  }
+
+  return (
+    <div className="space-y-5">
+      {node}
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-800">Turmas</h1>
+          <p className="text-slate-500 text-sm">{items.length} cadastradas</p>
+        </div>
+        {canEdit && (
+          <button onClick={() => setModal(true)}
+            className="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm">
+            <Icon name="plus" size={16} /> Nova turma
+          </button>
+        )}
+      </header>
+
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1,2,3].map(i => <Skeleton key={i} className="h-32" />)}
+        </div>
+      ) : items.length === 0
+        ? <EmptyState title="Nenhuma turma cadastrada" icon="turmas" description="Crie a primeira turma para começar." />
+        : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {items.map(t => (
+              <div key={t.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:shadow-md transition">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-lg font-semibold text-slate-800">{t.nome}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{t.ano} • {t.periodo}</p>
+                  </div>
+                  {canEdit && (
+                    <button onClick={() => excluir(t.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50">
+                      <Icon name="trash" size={16} />
+                    </button>
+                  )}
+                </div>
+                <div className="mt-4 flex items-center justify-between text-sm">
+                  <span className="text-slate-500">{alunosCount[t.id] || 0} aluno(s)</span>
+                  <a href={`#/turmas/${t.id}`} className="text-blue-700 font-medium flex items-center gap-1">
+                    Abrir <Icon name="arrowRight" size={14} />
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+      <Modal open={modal} onClose={() => setModal(false)} title="Nova turma"
+        footer={<>
+          <button onClick={() => setModal(false)} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700">Cancelar</button>
+          <button onClick={criar} className="px-4 py-2 rounded-lg bg-blue-700 text-white">Salvar</button>
+        </>}>
+        <Field label="Nome"><input className={inputCls} value={form.nome} onChange={e => setForm({ ...form, nome:e.target.value })} /></Field>
+        <Field label="Ano"><input className={inputCls} value={form.ano} onChange={e => setForm({ ...form, ano:e.target.value })} /></Field>
+        <Field label="Período">
+          <select className={inputCls} value={form.periodo} onChange={e => setForm({ ...form, periodo:e.target.value })}>
+            <option>Manhã</option><option>Tarde</option><option>Noite</option><option>Integral</option>
+          </select>
+        </Field>
+      </Modal>
+    </div>
+  );
+}
+
+function TurmaDetalhe({ id }) {
+  const [turma, setTurma] = useState(null);
+  const [alunos, setAlunos] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { load(); }, [id]);
+  async function load() {
+    setLoading(true);
+    const [t, a] = await Promise.all([
+      sb.from('turmas').select('*').eq('id', id).maybeSingle(),
+      sb.from('alunos').select('*').eq('turma_id', id).order('nome'),
+    ]);
+    if (t.error) throw t.error;
+    if (a.error) throw a.error;
+    setTurma(t.data); setAlunos(a.data || []); setLoading(false);
+  }
+  if (loading) return <Skeleton className="h-40" />;
+  if (!turma) return <EmptyState title="Turma não encontrada" />;
+
+  return (
+    <div className="space-y-5">
+      <a href="#/turmas" className="text-sm text-blue-700 inline-flex items-center gap-1"><Icon name="arrowRight" size={14} className="rotate-180" /> Voltar</a>
+      <header>
+        <h1 className="text-2xl font-semibold text-slate-800">{turma.nome}</h1>
+        <p className="text-slate-500 text-sm">{turma.ano} • {turma.periodo}</p>
+      </header>
+      <section className="bg-white rounded-2xl border border-slate-100 shadow-sm">
+        <h2 className="p-4 border-b font-medium text-slate-700">Alunos ({alunos.length})</h2>
+        {alunos.length === 0
+          ? <EmptyState title="Nenhum aluno cadastrado nesta turma" />
+          : (
+            <ul className="divide-y divide-slate-100">
+              {alunos.map(a => (
+                <li key={a.id} className="p-4 flex items-center justify-between">
+                  <span className="font-medium text-slate-800">{a.nome}</span>
+                  <a href={`#/alunos/${a.id}`} className="text-blue-700 text-sm">Abrir</a>
+                </li>
+              ))}
+            </ul>
+          )}
+      </section>
+    </div>
+  );
+}
+
+/* =========================================================================
+   👥 ALUNOS
+   ========================================================================= */
+function Alunos() {
+  const { user } = useAuth();
+  const { show, node } = useToast();
+  const [items, setItems] = useState([]);
+  const [turmas, setTurmas] = useState([]);
+  const [q, setQ] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ nome:'', turma_id:'' });
+  const canEdit = ['admin','pedagogo'].includes(user?.tipo);
+
+  useEffect(() => { load(); }, []);
+  async function load() {
+    setLoading(true);
+    try {
+      const [a, t] = await Promise.all([
+        sb.from('alunos').select('*, turmas(nome)').order('nome'),
+        sb.from('turmas').select('*').order('nome'),
+      ]);
+      setItems(a.data || []); setTurmas(t.data || []);
+    } catch (e) { console.error(e); show(getErrorMessage(e), 'red'); }
+    finally { setLoading(false); }
+  }
+  async function criar() {
+    if (!form.nome) return;
+    const { error } = await sb.from('alunos').insert({ ...form, nome: form.nome.trim(), turma_id: form.turma_id || null, situacao:'ativo' });
+    if (error) return show(getErrorMessage(error), 'red');
+    show('Aluno cadastrado!', 'green');
+    setModal(false); setForm({ nome:'', turma_id:'' }); load();
+  }
+
+  const filtrados = items.filter(a =>
+    a.nome.toLowerCase().includes(q.toLowerCase()) ||
+    (a.turmas?.nome || '').toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div className="space-y-5">
+      {node}
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-800">Alunos</h1>
+          <p className="text-slate-500 text-sm">{items.length} cadastrados</p>
+        </div>
+        <div className="flex gap-2">
+          <div className="relative">
+            <Icon name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar…"
+              className="pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm w-full md:w-64" />
+          </div>
+          {canEdit && (
+            <button onClick={() => setModal(true)}
+              className="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm">
+              <Icon name="plus" size={16} /> Novo aluno
+            </button>
+          )}
+        </div>
+      </header>
+
+      {loading ? <Skeleton className="h-40" />
+        : filtrados.length === 0 ? <EmptyState title="Nenhum aluno encontrado" icon="alunos" />
+        : (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <table className="w-full text-sm hidden md:table">
+              <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+                <tr>
+                  <th className="text-left p-3">Nome</th>
+                  <th className="text-left p-3">Turma</th>
+                  <th className="text-left p-3">Situação</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtrados.map(a => (
+                  <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50">
+                    <td className="p-3 font-medium text-slate-800">{a.nome}</td>
+                    <td className="p-3 text-slate-600">{a.turmas?.nome || '—'}</td>
+                    <td className="p-3"><StatusBadge status={a.situacao || 'ativo'} /></td>
+                    <td className="p-3 text-right"><a href={`#/alunos/${a.id}`} className="text-blue-700">Abrir</a></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <ul className="md:hidden divide-y divide-slate-100">
+              {filtrados.map(a => (
+                <li key={a.id} className="p-4">
+                  <a href={`#/alunos/${a.id}`} className="block">
+                    <p className="font-medium text-slate-800">{a.nome}</p>
+                    <p className="text-xs text-slate-500">{a.turmas?.nome || '—'}</p>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+      <Modal open={modal} onClose={() => setModal(false)} title="Novo aluno"
+        footer={<>
+          <button onClick={() => setModal(false)} className="px-4 py-2 rounded-lg border border-slate-200">Cancelar</button>
+          <button onClick={criar} className="px-4 py-2 rounded-lg bg-blue-700 text-white">Salvar</button>
+        </>}>
+        <Field label="Nome"><input className={inputCls} value={form.nome} onChange={e => setForm({ ...form, nome:e.target.value })} /></Field>
+        <Field label="Turma">
+          <select className={inputCls} value={form.turma_id} onChange={e => setForm({ ...form, turma_id:e.target.value })}>
+            <option value="">Selecione…</option>
+            {turmas.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+          </select>
+        </Field>
+      </Modal>
+    </div>
+  );
+}
+
+function AlunoDetalhe({ id }) {
+  const [aluno, setAluno] = useState(null);
+  const [dificuldades, setDificuldades] = useState([]);
+  const [destaques, setDestaques] = useState([]);
+  const [enc, setEnc] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { load(); }, [id]);
+  async function load() {
+    setLoading(true);
+    const [a, d, de, e] = await Promise.all([
+      sb.from('alunos').select('*, turmas(nome)').eq('id', id).maybeSingle(),
+      sb.from('dificuldades').select('*').eq('aluno_id', id).order('created_at', { ascending:false }),
+      sb.from('destaques').select('*').eq('aluno_id', id).order('created_at', { ascending:false }),
+      sb.from('encaminhamentos').select('*').eq('aluno_id', id).order('created_at', { ascending:false }),
+    ]);
+    setAluno(a.data); setDificuldades(d.data || []); setDestaques(de.data || []); setEnc(e.data || []);
+    setLoading(false);
+  }
+  if (loading) return <Skeleton className="h-40" />;
+  if (!aluno) return <EmptyState title="Aluno não encontrado" />;
+
+  return (
+    <div className="space-y-5">
+      <a href="#/alunos" className="text-sm text-blue-700 inline-flex items-center gap-1"><Icon name="arrowRight" size={14} className="rotate-180" /> Voltar</a>
+      <header className="flex items-center gap-3">
+        <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold text-lg">
+          {aluno.nome.charAt(0)}
+        </div>
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-800">{aluno.nome}</h1>
+          <p className="text-slate-500 text-sm">{aluno.turmas?.nome || 'Sem turma'} • {aluno.situacao}</p>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <h3 className="font-semibold text-rose-600 flex items-center gap-2 mb-3"><Icon name="dificuldades" size={16} /> Dificuldades</h3>
+          {dificuldades.length === 0 ? <p className="text-sm text-slate-500">Nenhum registro</p>
+            : <ul className="space-y-2 text-sm">{dificuldades.slice(0,4).map(d => (
+              <li key={d.id} className="border-l-2 border-rose-200 pl-2">
+                <p className="font-medium text-slate-800 capitalize">{(d.tipo || '').replace(/_/g,' ')}</p>
+                <p className="text-xs text-slate-500">{d.descricao}</p>
+              </li>))}</ul>}
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <h3 className="font-semibold text-amber-500 flex items-center gap-2 mb-3"><Icon name="destaques" size={16} /> Destaques</h3>
+          {destaques.length === 0 ? <p className="text-sm text-slate-500">Nenhum registro</p>
+            : <ul className="space-y-2 text-sm">{destaques.slice(0,4).map(d => (
+              <li key={d.id} className="border-l-2 border-amber-200 pl-2">
+                <p className="font-medium text-slate-800 capitalize">{(d.motivo || '').replace(/_/g,' ')}</p>
+                <p className="text-xs text-slate-500">{d.descricao}</p>
+              </li>))}</ul>}
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+          <h3 className="font-semibold text-orange-600 flex items-center gap-2 mb-3"><Icon name="encaminhamentos" size={16} /> Encaminhamentos</h3>
+          {enc.length === 0 ? <p className="text-sm text-slate-500">Nenhum registro</p>
+            : <ul className="space-y-2 text-sm">{enc.slice(0,4).map(d => (
+              <li key={d.id} className="border-l-2 border-orange-200 pl-2 flex justify-between gap-2">
+                <p className="text-slate-700 truncate">{d.descricao}</p>
+                <StatusBadge status={d.status} />
+              </li>))}</ul>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   📝 AVALIAÇÕES
+   ========================================================================= */
+function Avaliacoes() {
+  const { show, node } = useToast();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { load(); }, []);
+  async function load() {
+    setLoading(true);
+    try {
+      const { data } = await sb.from('avaliacoes')
+        .select('*, turmas(nome), usuarios(nome)')
+        .order('created_at', { ascending:false });
+      setItems(data || []);
+    } catch (e) { console.error(e); show(getErrorMessage(e), 'red'); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div className="space-y-5">
+      {node}
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-800">Avaliações</h1>
+          <p className="text-slate-500 text-sm">{items.length} registros</p>
+        </div>
+        <a href="#/avaliacoes/nova"
+          className="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm w-fit">
+          <Icon name="plus" size={16} /> Nova avaliação
+        </a>
+      </header>
+
+      {loading ? <Skeleton className="h-40" />
+        : items.length === 0 ? <EmptyState title="Nenhuma avaliação registrada" icon="avaliacoes" description="Comece criando uma nova avaliação." />
+        : (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+                <tr>
+                  <th className="text-left p-3">Turma</th>
+                  <th className="text-left p-3 hidden md:table-cell">Professor</th>
+                  <th className="text-left p-3">Período</th>
+                  <th className="text-left p-3">Status</th>
+                  <th className="text-left p-3 hidden md:table-cell">Criada</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(a => (
+                  <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50">
+                    <td className="p-3 font-medium text-slate-800">{a.turmas?.nome || '—'}</td>
+                    <td className="p-3 text-slate-600 hidden md:table-cell">{a.usuarios?.nome || '—'}</td>
+                    <td className="p-3 text-slate-600">{a.periodo}</td>
+                    <td className="p-3"><StatusBadge status={a.status} /></td>
+                    <td className="p-3 text-slate-500 hidden md:table-cell">{fmtDate(a.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+    </div>
+  );
+}
+
+function AvaliacaoNova() {
+  const { user } = useAuth();
+  const { show, node } = useToast();
+  const [turmas, setTurmas] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({
+    turma_id:'', periodo:'1º Período',
+    aprendizagem:'', participacao:'', postura:'', frequencia:'', observacoes:'',
+  });
+
+  useEffect(() => {
+    sb.from('turmas').select('*').order('nome').then(({ data, error }) => {
+      if (error) show(getErrorMessage(error), 'red');
+      setTurmas(data || []);
+    });
+  }, []);
+
+  async function salvar(status) {
+    if (!form.turma_id) return show('Selecione a turma.', 'orange');
+    setLoading(true);
+    const { error } = await sb.from('avaliacoes').insert({ ...form, professor_id: user.id, status });
+    setLoading(false);
+    if (error) return show(getErrorMessage(error), 'red');
+    show('Avaliação salva!', 'green');
+    setTimeout(() => { window.location.hash = '#/avaliacoes'; }, 700);
+  }
+
+  return (
+    <div className="space-y-5">
+      {node}
+      <a href="#/avaliacoes" className="text-sm text-blue-700 inline-flex items-center gap-1"><Icon name="arrowRight" size={14} className="rotate-180" /> Voltar</a>
+      <header>
+        <h1 className="text-2xl font-semibold text-slate-800">Nova avaliação</h1>
+        <p className="text-slate-500 text-sm">Preencha a ficha do período</p>
+      </header>
+
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Field label="Período">
+            <select className={inputCls} value={form.periodo} onChange={e => setForm({ ...form, periodo:e.target.value })}>
+              <option>1º Período</option><option>2º Período</option><option>3º Período</option>
+            </select>
+          </Field>
+          <Field label="Turma">
+            <select className={inputCls} value={form.turma_id} onChange={e => setForm({ ...form, turma_id:e.target.value })}>
+              <option value="">Selecione…</option>
+              {turmas.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+            </select>
+          </Field>
+          <Field label="Professor">
+            <input className={`${inputCls} bg-slate-50`} value={user?.nome || ''} disabled />
+          </Field>
+        </div>
+
+        <fieldset className="border-t border-slate-100 pt-4">
+          <legend className="text-sm font-semibold text-slate-700 mb-2">Aprendizagem</legend>
+          <textarea rows={3} className={inputCls} placeholder="Nível de aprendizagem, desempenho, conteúdos com dificuldade…"
+            value={form.aprendizagem} onChange={e => setForm({ ...form, aprendizagem:e.target.value })} />
+        </fieldset>
+
+        <fieldset className="border-t border-slate-100 pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <p className="text-sm font-semibold text-slate-700 mb-2">Participação</p>
+            <textarea rows={3} className={inputCls} placeholder="Envolvimento, participação…"
+              value={form.participacao} onChange={e => setForm({ ...form, participacao:e.target.value })} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-700 mb-2">Postura</p>
+            <textarea rows={3} className={inputCls} placeholder="Postura e responsabilidade…"
+              value={form.postura} onChange={e => setForm({ ...form, postura:e.target.value })} />
+          </div>
+        </fieldset>
+
+        <fieldset className="border-t border-slate-100 pt-4">
+          <legend className="text-sm font-semibold text-slate-700 mb-2">Frequência</legend>
+          <textarea rows={2} className={inputCls} placeholder="Assiduidade, faltas…"
+            value={form.frequencia} onChange={e => setForm({ ...form, frequencia:e.target.value })} />
+        </fieldset>
+
+        <fieldset className="border-t border-slate-100 pt-4">
+          <legend className="text-sm font-semibold text-slate-700 mb-2">Observações gerais</legend>
+          <textarea rows={5} className={inputCls}
+            value={form.observacoes} onChange={e => setForm({ ...form, observacoes:e.target.value })} />
+        </fieldset>
+
+        <div className="flex flex-wrap gap-3 justify-end pt-3 border-t border-slate-100">
+          <button disabled={loading} onClick={() => salvar('rascunho')}
+            className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">Salvar rascunho</button>
+          <button disabled={loading} onClick={() => salvar('finalizada')}
+            className="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white">Finalizar avaliação</button>
+          <button disabled={loading} onClick={() => salvar('enviada')}
+            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white">Enviar ficha</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   ⚠️  DIFICULDADES
+   ========================================================================= */
+const TIPOS_DIF = ['aprendizagem','participacao','frequencia','comportamento','conteudo_especifico','apoio','outro'];
+const STATUS_ITEM = ['pendente','em_acompanhamento','resolvido','encaminhado'];
+
+function Dificuldades() {
+  const { user } = useAuth();
+  const { show, node } = useToast();
+  const [items, setItems] = useState([]);
+  const [alunos, setAlunos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({
+    aluno_id:'', tipo:'aprendizagem', descricao:'', conteudo_relacionado:'',
+    estrategia_realizada:'', observacoes:'', periodo:'1º Período', status:'pendente',
+  });
+
+  useEffect(() => { load(); }, []);
+  async function load() {
+    setLoading(true);
+    try {
+      const [d, a] = await Promise.all([
+        sb.from('dificuldades').select('*, alunos(nome)').order('created_at', { ascending:false }),
+        sb.from('alunos').select('id,nome').order('nome'),
+      ]);
+      setItems(d.data || []); setAlunos(a.data || []);
+    } catch (e) { console.error(e); show(getErrorMessage(e), 'red'); }
+    finally { setLoading(false); }
+  }
+  async function salvar() {
+    if (!form.aluno_id || !form.descricao) return show('Preencha aluno e descrição', 'orange');
+    const { error } = await sb.from('dificuldades').insert({ ...form, professor_id: user.id, descricao: form.descricao.trim(), conteudo_relacionado: form.conteudo_relacionado.trim() || null, estrategia_realizada: form.estrategia_realizada.trim() || null, observacoes: form.observacoes.trim() || null });
+    if (error) return show(getErrorMessage(error), 'red');
+    show('Dificuldade registrada!', 'green');
+    setModal(false); load();
+  }
+  async function mudarStatus(id, status) {
+    const { error } = await sb.from('dificuldades').update({ status }).eq('id', id);
+    if (error) return show(getErrorMessage(error), 'red');
+    show('Status atualizado.', 'blue');
+    load();
+  }
+
+  return (
+    <div className="space-y-5">
+      {node}
+      <header className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-800">Dificuldades significativas</h1>
+          <p className="text-sm text-slate-500">{items.length} registros</p>
+        </div>
+        <button onClick={() => setModal(true)}
+          className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm">
+          <Icon name="plus" size={16} /> Registrar
+        </button>
+      </header>
+
+      {loading ? <Skeleton className="h-40" />
+        : items.length === 0 ? <EmptyState title="Nenhuma dificuldade registrada" icon="dificuldades" />
+        : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {items.map(d => (
+              <div key={d.id} className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+                <div className="flex justify-between items-start gap-2">
+                  <div>
+                    <p className="font-medium text-slate-800">{d.alunos?.nome || 'Aluno'}</p>
+                    <p className="text-xs text-slate-500 capitalize">{(d.tipo || '').replace(/_/g,' ')} • {d.periodo}</p>
+                  </div>
+                  <select value={d.status} onChange={e => mudarStatus(d.id, e.target.value)}
+                    className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white">
+                    {STATUS_ITEM.map(s => <option key={s} value={s}>{s.replace(/_/g,' ')}</option>)}
+                  </select>
+                </div>
+                <p className="mt-3 text-sm text-slate-700">{d.descricao}</p>
+                {d.estrategia_realizada && (
+                  <p className="mt-2 text-xs text-slate-500"><strong>Estratégia:</strong> {d.estrategia_realizada}</p>
+                )}
+                <p className="mt-3 text-xs text-slate-400">{fmtDateTime(d.created_at)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+      <Modal open={modal} onClose={() => setModal(false)} title="Registrar dificuldade"
+        footer={<>
+          <button onClick={() => setModal(false)} className="px-4 py-2 rounded-lg border border-slate-200">Cancelar</button>
+          <button onClick={salvar} className="px-4 py-2 rounded-lg bg-rose-600 text-white">Salvar</button>
+        </>}>
+        <Field label="Aluno">
+          <select className={inputCls} value={form.aluno_id} onChange={e => setForm({ ...form, aluno_id:e.target.value })}>
+            <option value="">Selecione…</option>
+            {alunos.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
+          </select>
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Tipo">
+            <select className={inputCls} value={form.tipo} onChange={e => setForm({ ...form, tipo:e.target.value })}>
+              {TIPOS_DIF.map(t => <option key={t} value={t}>{t.replace(/_/g,' ')}</option>)}
+            </select>
+          </Field>
+          <Field label="Período">
+            <select className={inputCls} value={form.periodo} onChange={e => setForm({ ...form, periodo:e.target.value })}>
+              <option>1º Período</option><option>2º Período</option><option>3º Período</option>
+            </select>
+          </Field>
+        </div>
+        <Field label="Descrição">
+          <textarea rows={3} className={inputCls} value={form.descricao} onChange={e => setForm({ ...form, descricao:e.target.value })} />
+        </Field>
+        <Field label="Conteúdo relacionado">
+          <input className={inputCls} value={form.conteudo_relacionado} onChange={e => setForm({ ...form, conteudo_relacionado:e.target.value })} />
+        </Field>
+        <Field label="Estratégias já realizadas">
+          <textarea rows={2} className={inputCls} value={form.estrategia_realizada} onChange={e => setForm({ ...form, estrategia_realizada:e.target.value })} />
+        </Field>
+      </Modal>
+    </div>
+  );
+}
+
+/* =========================================================================
+   ⭐ DESTAQUES
+   ========================================================================= */
+const MOTIVOS_DES = ['participacao','responsabilidade','protagonismo','evolucao','desempenho','colaboracao','outro'];
+
+function Destaques() {
+  const { user } = useAuth();
+  const { show, node } = useToast();
+  const [items, setItems] = useState([]);
+  const [alunos, setAlunos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ aluno_id:'', motivo:'participacao', descricao:'', periodo:'1º Período' });
+
+  useEffect(() => { load(); }, []);
+  async function load() {
+    setLoading(true);
+    try {
+      const [d, a] = await Promise.all([
+        sb.from('destaques').select('*, alunos(nome)').order('created_at', { ascending:false }),
+        sb.from('alunos').select('id,nome').order('nome'),
+      ]);
+      setItems(d.data || []); setAlunos(a.data || []);
+    } catch (e) { console.error(e); show(getErrorMessage(e), 'red'); }
+    finally { setLoading(false); }
+  }
+  async function salvar() {
+    if (!form.aluno_id || !form.descricao) return show('Preencha aluno e descrição', 'orange');
+    const { error } = await sb.from('destaques').insert({ ...form, professor_id: user.id, descricao: form.descricao.trim() });
+    if (error) return show(getErrorMessage(error), 'red');
+    show('Destaque registrado!', 'green');
+    setModal(false); load();
+  }
+
+  return (
+    <div className="space-y-5">
+      {node}
+      <header className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-800">Destaques positivos</h1>
+          <p className="text-sm text-slate-500">{items.length} registros</p>
+        </div>
+        <button onClick={() => setModal(true)}
+          className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm">
+          <Icon name="plus" size={16} /> Registrar
+        </button>
+      </header>
+
+      {loading ? <Skeleton className="h-40" />
+        : items.length === 0 ? <EmptyState title="Nenhum destaque registrado" icon="destaques" />
+        : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {items.map(d => (
+              <div key={d.id} className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center">
+                    <Icon name="destaques" size={16} />
+                  </div>
+                  <div>
+                    <p className="font-medium text-slate-800">{d.alunos?.nome || 'Aluno'}</p>
+                    <p className="text-xs text-slate-500 capitalize">{(d.motivo || '').replace(/_/g,' ')}</p>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-700">{d.descricao}</p>
+                <p className="mt-3 text-xs text-slate-400">{fmtDateTime(d.created_at)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+      <Modal open={modal} onClose={() => setModal(false)} title="Registrar destaque"
+        footer={<>
+          <button onClick={() => setModal(false)} className="px-4 py-2 rounded-lg border border-slate-200">Cancelar</button>
+          <button onClick={salvar} className="px-4 py-2 rounded-lg bg-amber-500 text-white">Salvar</button>
+        </>}>
+        <Field label="Aluno">
+          <select className={inputCls} value={form.aluno_id} onChange={e => setForm({ ...form, aluno_id:e.target.value })}>
+            <option value="">Selecione…</option>
+            {alunos.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
+          </select>
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Motivo">
+            <select className={inputCls} value={form.motivo} onChange={e => setForm({ ...form, motivo:e.target.value })}>
+              {MOTIVOS_DES.map(m => <option key={m} value={m}>{m.replace(/_/g,' ')}</option>)}
+            </select>
+          </Field>
+          <Field label="Período">
+            <select className={inputCls} value={form.periodo} onChange={e => setForm({ ...form, periodo:e.target.value })}>
+              <option>1º Período</option><option>2º Período</option><option>3º Período</option>
+            </select>
+          </Field>
+        </div>
+        <Field label="Descrição">
+          <textarea rows={4} className={inputCls} value={form.descricao} onChange={e => setForm({ ...form, descricao:e.target.value })} />
+        </Field>
+      </Modal>
+    </div>
+  );
+}
+
+/* =========================================================================
+   📨 ENCAMINHAMENTOS
+   ========================================================================= */
+function Encaminhamentos() {
+  const { user } = useAuth();
+  const { show, node } = useToast();
+  const [items, setItems] = useState([]);
+  const [alunos, setAlunos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({
+    aluno_id:'', descricao:'', prazo:'', status:'pendente', resultado:'', observacoes:'',
+  });
+
+  useEffect(() => { load(); }, []);
+  async function load() {
+    setLoading(true);
+    try {
+      const [e, a] = await Promise.all([
+        sb.from('encaminhamentos').select('*, alunos(nome), usuarios(nome)').order('created_at', { ascending:false }),
+        sb.from('alunos').select('id,nome').order('nome'),
+      ]);
+      setItems(e.data || []); setAlunos(a.data || []);
+    } catch (err) { console.error(err); show(getErrorMessage(err), 'red'); }
+    finally { setLoading(false); }
+  }
+  async function salvar() {
+    if (!form.aluno_id || !form.descricao) return show('Preencha aluno e descrição', 'orange');
+    const { error } = await sb.from('encaminhamentos').insert({ ...form, responsavel_id: user.id, descricao: form.descricao.trim(), prazo: form.prazo || null, resultado: form.resultado.trim() || null, observacoes: form.observacoes.trim() || null });
+    if (error) return show(getErrorMessage(error), 'red');
+    show('Encaminhamento criado!', 'green');
+    setModal(false); load();
+  }
+  async function mudarStatus(id, status) {
+    const { error } = await sb.from('encaminhamentos').update({ status }).eq('id', id);
+    if (error) return show(getErrorMessage(error), 'red');
+    show('Status atualizado.', 'blue');
+    load();
+  }
+
+  return (
+    <div className="space-y-5">
+      {node}
+      <header className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-800">Encaminhamentos</h1>
+          <p className="text-sm text-slate-500">{items.length} registros</p>
+        </div>
+        <button onClick={() => setModal(true)}
+          className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm">
+          <Icon name="plus" size={16} /> Novo
+        </button>
+      </header>
+
+      {loading ? <Skeleton className="h-40" />
+        : items.length === 0 ? <EmptyState title="Nenhum encaminhamento" icon="encaminhamentos" />
+        : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {items.map(e => (
+              <div key={e.id} className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+                <div className="flex justify-between items-start gap-2">
+                  <div>
+                    <p className="font-medium text-slate-800">{e.alunos?.nome || 'Aluno'}</p>
+                    <p className="text-xs text-slate-500">Prazo: {fmtDate(e.prazo)}</p>
+                  </div>
+                  <select value={e.status} onChange={ev => mudarStatus(e.id, ev.target.value)}
+                    className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white">
+                    {STATUS_ITEM.map(s => <option key={s} value={s}>{s.replace(/_/g,' ')}</option>)}
+                  </select>
+                </div>
+                <p className="mt-3 text-sm text-slate-700">{e.descricao}</p>
+                {e.resultado && <p className="mt-2 text-xs text-emerald-700"><strong>Resultado:</strong> {e.resultado}</p>}
+                <p className="mt-3 text-xs text-slate-400">Responsável: {e.usuarios?.nome || '—'}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+      <Modal open={modal} onClose={() => setModal(false)} title="Novo encaminhamento"
+        footer={<>
+          <button onClick={() => setModal(false)} className="px-4 py-2 rounded-lg border border-slate-200">Cancelar</button>
+          <button onClick={salvar} className="px-4 py-2 rounded-lg bg-orange-500 text-white">Salvar</button>
+        </>}>
+        <Field label="Aluno">
+          <select className={inputCls} value={form.aluno_id} onChange={e => setForm({ ...form, aluno_id:e.target.value })}>
+            <option value="">Selecione…</option>
+            {alunos.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
+          </select>
+        </Field>
+        <Field label="Descrição">
+          <textarea rows={3} className={inputCls} value={form.descricao} onChange={e => setForm({ ...form, descricao:e.target.value })} />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Prazo">
+            <input type="date" className={inputCls} value={form.prazo} onChange={e => setForm({ ...form, prazo:e.target.value })} />
+          </Field>
+          <Field label="Status">
+            <select className={inputCls} value={form.status} onChange={e => setForm({ ...form, status:e.target.value })}>
+              {STATUS_ITEM.map(s => <option key={s} value={s}>{s.replace(/_/g,' ')}</option>)}
+            </select>
+          </Field>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/* =========================================================================
+   ✅ AÇÕES
+   ========================================================================= */
+function Acoes() {
+  const { user } = useAuth();
+  const { show, node } = useToast();
+  const [items, setItems] = useState([]);
+  const [alunos, setAlunos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ aluno_id:'', descricao:'', prazo:'', status:'pendente', resultado:'' });
+
+  useEffect(() => { load(); }, []);
+  async function load() {
+    setLoading(true);
+    try {
+      const [a, al] = await Promise.all([
+        sb.from('acoes').select('*, alunos(nome), usuarios(nome)').order('created_at', { ascending:false }),
+        sb.from('alunos').select('id,nome').order('nome'),
+      ]);
+      setItems(a.data || []); setAlunos(al.data || []);
+    } catch (e) { console.error(e); show(getErrorMessage(e), 'red'); }
+    finally { setLoading(false); }
+  }
+  async function salvar() {
+    if (!form.aluno_id || !form.descricao) return show('Preencha aluno e descrição', 'orange');
+    const { error } = await sb.from('acoes').insert({ ...form, responsavel_id: user.id, descricao: form.descricao.trim(), prazo: form.prazo || null, resultado: form.resultado.trim() || null });
+    if (error) return show(getErrorMessage(error), 'red');
+    show('Ação registrada!', 'green');
+    setModal(false); load();
+  }
+
+  return (
+    <div className="space-y-5">
+      {node}
+      <header className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-800">Ações</h1>
+          <p className="text-sm text-slate-500">{items.length} registros</p>
+        </div>
+        <button onClick={() => setModal(true)}
+          className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm">
+          <Icon name="plus" size={16} /> Nova ação
+        </button>
+      </header>
+
+      {loading ? <Skeleton className="h-40" />
+        : items.length === 0 ? <EmptyState title="Nenhuma ação registrada" icon="acoes" />
+        : (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+                <tr>
+                  <th className="text-left p-3">Aluno</th>
+                  <th className="text-left p-3">Descrição</th>
+                  <th className="text-left p-3 hidden md:table-cell">Responsável</th>
+                  <th className="text-left p-3">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(a => (
+                  <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50">
+                    <td className="p-3 font-medium text-slate-800">{a.alunos?.nome || '—'}</td>
+                    <td className="p-3 text-slate-600">{a.descricao}</td>
+                    <td className="p-3 text-slate-500 hidden md:table-cell">{a.usuarios?.nome || '—'}</td>
+                    <td className="p-3"><StatusBadge status={a.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+      <Modal open={modal} onClose={() => setModal(false)} title="Nova ação"
+        footer={<>
+          <button onClick={() => setModal(false)} className="px-4 py-2 rounded-lg border border-slate-200">Cancelar</button>
+          <button onClick={salvar} className="px-4 py-2 rounded-lg bg-purple-600 text-white">Salvar</button>
+        </>}>
+        <Field label="Aluno">
+          <select className={inputCls} value={form.aluno_id} onChange={e => setForm({ ...form, aluno_id:e.target.value })}>
+            <option value="">Selecione…</option>
+            {alunos.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
+          </select>
+        </Field>
+        <Field label="Descrição">
+          <textarea rows={3} className={inputCls} value={form.descricao} onChange={e => setForm({ ...form, descricao:e.target.value })} />
+        </Field>
+        <Field label="Prazo">
+          <input type="date" className={inputCls} value={form.prazo} onChange={e => setForm({ ...form, prazo:e.target.value })} />
+        </Field>
+      </Modal>
+    </div>
+  );
+}
+
+/* =========================================================================
+   🗓️  REUNIÕES
+   ========================================================================= */
+function Reunioes() {
+  const { user } = useAuth();
+  const { show, node } = useToast();
+  const [items, setItems] = useState([]);
+  const [turmas, setTurmas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({
+    turma_id:'', data:'', periodo:'1º Período', participantes:'', observacoes:'', decisoes:'',
+  });
+  const canEdit = ['admin','pedagogo','direcao'].includes(user?.tipo);
+
+  useEffect(() => { load(); }, []);
+  async function load() {
+    setLoading(true);
+    try {
+      const [r, t] = await Promise.all([
+        sb.from('reunioes').select('*, turmas(nome)').order('data', { ascending:false }),
+        sb.from('turmas').select('*').order('nome'),
+      ]);
+      setItems(r.data || []); setTurmas(t.data || []);
+    } catch (e) { console.error(e); show(getErrorMessage(e), 'red'); }
+    finally { setLoading(false); }
+  }
+  async function salvar() {
+    if (!form.turma_id || !form.data) return show('Preencha turma e data', 'orange');
+    const { error } = await sb.from('reunioes').insert({ ...form, data: new Date(form.data).toISOString() });
+    if (error) return show(getErrorMessage(error), 'red');
+    show('Reunião criada!', 'green');
+    setModal(false); load();
+  }
+
+  return (
+    <div className="space-y-5">
+      {node}
+      <header className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-800">Reuniões do conselho</h1>
+          <p className="text-sm text-slate-500">{items.length} reuniões</p>
+        </div>
+        {canEdit && (
+          <button onClick={() => setModal(true)}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm">
+            <Icon name="plus" size={16} /> Nova
+          </button>
+        )}
+      </header>
+
+      {loading ? <Skeleton className="h-40" />
+        : items.length === 0 ? <EmptyState title="Nenhuma reunião registrada" icon="reunioes" />
+        : (
+          <div className="space-y-3">
+            {items.map(r => (
+              <div key={r.id} className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
+                <div className="flex justify-between items-start gap-3">
+                  <div>
+                    <p className="font-semibold text-slate-800">{r.turmas?.nome || 'Turma'} — {r.periodo}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{fmtDateTime(r.data)}</p>
+                  </div>
+                </div>
+                {r.participantes && <p className="mt-3 text-sm text-slate-600"><strong>Participantes:</strong> {r.participantes}</p>}
+                {r.observacoes && <p className="mt-2 text-sm text-slate-600">{r.observacoes}</p>}
+                {r.decisoes && (
+                  <div className="mt-3 p-3 bg-purple-50 rounded-lg">
+                    <p className="text-xs font-semibold text-purple-700 uppercase">Decisões</p>
+                    <p className="text-sm text-purple-900 mt-1">{r.decisoes}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+      <Modal open={modal} onClose={() => setModal(false)} title="Nova reunião"
+        footer={<>
+          <button onClick={() => setModal(false)} className="px-4 py-2 rounded-lg border border-slate-200">Cancelar</button>
+          <button onClick={salvar} className="px-4 py-2 rounded-lg bg-purple-600 text-white">Salvar</button>
+        </>}>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Turma">
+            <select className={inputCls} value={form.turma_id} onChange={e => setForm({ ...form, turma_id:e.target.value })}>
+              <option value="">Selecione…</option>
+              {turmas.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+            </select>
+          </Field>
+          <Field label="Data">
+            <input type="datetime-local" className={inputCls} value={form.data} onChange={e => setForm({ ...form, data:e.target.value })} />
+          </Field>
+        </div>
+        <Field label="Período">
+          <select className={inputCls} value={form.periodo} onChange={e => setForm({ ...form, periodo:e.target.value })}>
+            <option>1º Período</option><option>2º Período</option><option>3º Período</option>
+          </select>
+        </Field>
+        <Field label="Participantes">
+          <input className={inputCls} value={form.participantes} onChange={e => setForm({ ...form, participantes:e.target.value })} placeholder="Separe por vírgula" />
+        </Field>
+        <Field label="Observações">
+          <textarea rows={3} className={inputCls} value={form.observacoes} onChange={e => setForm({ ...form, observacoes:e.target.value })} />
+        </Field>
+        <Field label="Decisões">
+          <textarea rows={3} className={inputCls} value={form.decisoes} onChange={e => setForm({ ...form, decisoes:e.target.value })} />
+        </Field>
+      </Modal>
+    </div>
+  );
+}
+
+/* =========================================================================
+   📈 RELATÓRIOS
+   ========================================================================= */
+function Relatorios() {
+  const { show, node } = useToast();
+  const [data, setData] = useState({ dificuldades:[], destaques:[], enc:[], acoes:[] });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { load(); }, []);
+  async function load() {
+    setLoading(true);
+    try {
+      const [d, de, e, a] = await Promise.all([
+        sb.from('dificuldades').select('tipo,status,periodo'),
+        sb.from('destaques').select('motivo,periodo'),
+        sb.from('encaminhamentos').select('status'),
+        sb.from('acoes').select('status'),
+      ]);
+      setData({
+        dificuldades:d.data || [], destaques:de.data || [],
+        enc:e.data || [], acoes:a.data || [],
+      });
+    } catch (err) { console.error(err); show(getErrorMessage(err), 'red'); }
+    finally { setLoading(false); }
+  }
+
+  const groupBy = (arr, key) => {
+    const m = {};
+    arr.forEach(i => { const k = i[key]; m[k] = (m[k] || 0) + 1; });
+    return Object.entries(m).map(([k, v]) => ({ label:k.replace(/_/g,' '), total:v }));
+  };
+  const palette = ['#1e3a8a','#3b82f6','#8b5cf6','#f97316','#ef4444','#10b981','#f59e0b'];
+
+  const difPorPeriodo = {};
+  data.dificuldades.forEach(d => {
+    if (!difPorPeriodo[d.periodo]) difPorPeriodo[d.periodo] = 0;
+    difPorPeriodo[d.periodo]++;
+  });
+  const lineData = {
+    labels: Object.keys(difPorPeriodo),
+    datasets: [{
+      label:'Dificuldades por período',
+      data: Object.values(difPorPeriodo),
+      borderColor:'#1e3a8a', backgroundColor:'rgba(30,58,138,.1)', tension:.35, fill:true,
+    }],
+  };
+  const stEnc = groupBy(data.enc, 'status');
+  const stAcoes = groupBy(data.acoes, 'status');
+
+  return (
+    <div className="space-y-5">
+      {node}
+      <header>
+        <h1 className="text-2xl font-semibold text-slate-800">Relatórios</h1>
+        <p className="text-slate-500 text-sm">Indicadores pedagógicos consolidados</p>
+      </header>
+
+      {loading ? <Skeleton className="h-64" /> : (
+        <>
+          <section className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <h2 className="font-semibold mb-3 text-slate-800">Evolução de dificuldades ao longo dos períodos</h2>
+            <div className="h-64">
+              <ChartCanvas type="line" data={lineData} options={{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } } }} />
+            </div>
+          </section>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <section className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+              <h2 className="font-semibold mb-3 text-slate-800">Encaminhamentos por status</h2>
+              <div className="h-56">
+                <ChartCanvas type="doughnut" data={{
+                  labels: stEnc.map(s => s.label),
+                  datasets: [{ data: stEnc.map(s => s.total), backgroundColor: palette, borderWidth: 0 }],
+                }} options={{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom' } } }} />
+              </div>
+            </section>
+
+            <section className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+              <h2 className="font-semibold mb-3 text-slate-800">Ações por status</h2>
+              <div className="h-56">
+                <ChartCanvas type="doughnut" data={{
+                  labels: stAcoes.map(s => s.label),
+                  datasets: [{ data: stAcoes.map(s => s.total), backgroundColor: palette, borderWidth: 0 }],
+                }} options={{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom' } } }} />
+              </div>
+            </section>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   🧑‍💼 USUÁRIOS
+   ========================================================================= */
+function Usuarios() {
+  const { show, node } = useToast();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { load(); }, []);
+  async function load() {
+    setLoading(true);
+    try {
+      const { data } = await sb.from('usuarios').select('*').order('nome');
+      setItems(data || []);
+    } catch (e) { console.error(e); show(getErrorMessage(e), 'red'); }
+    finally { setLoading(false); }
+  }
+  async function mudarTipo(id, tipo) {
+    const { error } = await sb.from('usuarios').update({ tipo }).eq('id', id);
+    if (error) return show(getErrorMessage(error), 'red');
+    show('Perfil atualizado.', 'green');
+    load();
+  }
+
+  return (
+    <div className="space-y-5">
+      {node}
+      <header>
+        <h1 className="text-2xl font-semibold text-slate-800">Usuários</h1>
+        <p className="text-slate-500 text-sm">Gerencie os perfis de acesso</p>
+      </header>
+
+      {loading ? <Skeleton className="h-40" /> : (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+              <tr>
+                <th className="text-left p-3">Nome</th>
+                <th className="text-left p-3 hidden md:table-cell">E-mail</th>
+                <th className="text-left p-3">Perfil</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(u => (
+                <tr key={u.id} className="border-t border-slate-100">
+                  <td className="p-3 font-medium text-slate-800">{u.nome}</td>
+                  <td className="p-3 text-slate-500 hidden md:table-cell">{u.email}</td>
+                  <td className="p-3">
+                    <select value={u.tipo} onChange={e => mudarTipo(u.id, e.target.value)}
+                      className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white">
+                      {['professor','pedagogo','direcao','admin'].map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   ⚙️  CONFIGURAÇÕES
+   ========================================================================= */
+function Configuracoes() {
+  const [periodos, setPeriodos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ nome:'', data_inicio:'', data_fim:'' });
+  const [connection, setConnection] = useState('checking');
+  const { show, node } = useToast();
+
+  useEffect(() => {
+    load();
+    checkConnection();
+  }, []);
+
+  async function checkConnection() {
+    const { error } = await sb.from('periodos').select('id', { count:'exact', head:true });
+    setConnection(error ? 'error' : 'ok');
+  }
+
+  async function load() {
+    setLoading(true);
+    try {
+      const { data, error } = await sb.from('periodos').select('*').order('data_inicio');
+      if (error) throw error;
+      setPeriodos(data || []);
+    } catch (e) { console.error(e); show(getErrorMessage(e), 'red'); }
+    finally { setLoading(false); }
+  }
+  async function criar() {
+    if (!form.nome) return;
+    const { error } = await sb.from('periodos').insert({ ...form, nome: form.nome.trim(), data_inicio: form.data_inicio || null, data_fim: form.data_fim || null });
+    if (error) return show(getErrorMessage(error), 'red');
+    show('Período criado.', 'green');
+    setForm({ nome:'', data_inicio:'', data_fim:'' }); load();
+  }
+  async function excluir(id) {
+    if (!confirm('Excluir este período?')) return;
+    const { error } = await sb.from('periodos').delete().eq('id', id);
+    if (error) return show(getErrorMessage(error), 'red');
+    show('Período excluído.', 'orange');
+    load();
+  }
+
+  return (
+    <div className="space-y-5">
+      {node}
+      <header>
+        <h1 className="text-2xl font-semibold text-slate-800">Configurações</h1>
+        <p className="text-slate-500 text-sm">Períodos letivos e dados globais</p>
+      </header>
+
+      <section className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <h2 className="font-semibold text-slate-800 mb-3">Períodos</h2>
+        {loading ? <Skeleton className="h-20" /> : (
+          <>
+            <ul className="divide-y divide-slate-100 mb-4">
+              {periodos.map(p => (
+                <li key={p.id} className="py-3 flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-slate-800">{p.nome}</p>
+                    <p className="text-xs text-slate-500">{fmtDate(p.data_inicio)} → {fmtDate(p.data_fim)}</p>
+                  </div>
+                  <button onClick={() => excluir(p.id)} className="text-rose-600 text-sm">Excluir</button>
+                </li>
+              ))}
+              {periodos.length === 0 && <li className="py-3 text-sm text-slate-500">Nenhum período cadastrado.</li>}
+            </ul>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input className={inputCls} placeholder="Nome (ex: 1º Período)" value={form.nome} onChange={e => setForm({ ...form, nome:e.target.value })} />
+              <input type="date" className={inputCls} value={form.data_inicio} onChange={e => setForm({ ...form, data_inicio:e.target.value })} />
+              <input type="date" className={inputCls} value={form.data_fim} onChange={e => setForm({ ...form, data_fim:e.target.value })} />
+            </div>
+            <button onClick={criar} className="mt-3 bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-lg text-sm">
+              Adicionar período
+            </button>
+          </>
+        )}
+      </section>
+
+      <section className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <h2 className="font-semibold text-slate-800 mb-2">Conexão com Supabase</h2>
+        <div className={`text-sm ${connection === 'ok' ? 'text-emerald-700' : connection === 'error' ? 'text-rose-700' : 'text-slate-500'}`}>
+          {connection === 'ok' ? '● Conectado e autenticado no banco.' : connection === 'error' ? '● Não foi possível consultar o banco. Verifique URL, chave, sessão e RLS.' : '● Verificando conexão…'}
+        </div>
+      </section>
+
+      <section className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <h2 className="font-semibold text-slate-800 mb-2">Setup do Supabase</h2>
+        <p className="text-sm text-slate-500 mb-3">
+          O banco deste projeto já foi preparado. Se precisar recriar o ambiente, use o SQL completo entregue junto com o arquivo.
+        </p>
+        <details className="group">
+          <summary className="cursor-pointer text-sm text-blue-700 font-medium">Ver SQL completo</summary>
+          <pre className="mt-3 p-3 bg-slate-900 text-slate-100 text-xs rounded-lg overflow-x-auto whitespace-pre">{SQL_SETUP}</pre>
+        </details>
+      </section>
+    </div>
+  );
+}
+
+/* =========================================================================
+   🚀 APP
+   ========================================================================= */
+function App() {
+  const { user, loading } = useAuth();
+  const { base, id } = useRoute();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-blue-700 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="mt-3 text-sm text-slate-500">Carregando Conselho360…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) return <Login />;
+
+  const route = (() => {
+    switch (base) {
+      case '/dashboard':       return <Dashboard />;
+      case '/turmas':          return id ? <TurmaDetalhe id={id} /> : <Turmas />;
+      case '/alunos':          return id ? <AlunoDetalhe id={id} /> : <Alunos />;
+      case '/avaliacoes':      return id === 'nova' ? <AvaliacaoNova /> : <Avaliacoes />;
+      case '/dificuldades':    return <Dificuldades />;
+      case '/destaques':       return <Destaques />;
+      case '/encaminhamentos': return <Encaminhamentos />;
+      case '/acoes':           return <Acoes />;
+      case '/reunioes':        return <Reunioes />;
+      case '/relatorios':      return <Relatorios />;
+      case '/usuarios':        return user.tipo === 'admin' ? <Usuarios /> : <NoAccess />;
+      case '/configuracoes':   return user.tipo === 'admin' ? <Configuracoes /> : <NoAccess />;
+      default:                 return <Dashboard />;
+    }
+  })();
+
+  return <Layout>{route}</Layout>;
+}
+
+function NoAccess() {
+  return (
+    <div className="p-10 text-center">
+      <p className="text-lg font-semibold text-slate-700">Acesso restrito</p>
+      <p className="text-slate-500 text-sm mt-1">Seu perfil não tem permissão para acessar esta página.</p>
+    </div>
+  );
+}
+
+/* ---------- SQL para copiar ---------- */
+const SQL_SETUP = `O SQL completo e seguro está no arquivo SQL entregue junto com esta aplicação. Não execute um SQL antigo desta tela sem revisar as policies RLS.`;
+
+/* =========================================================================
+   🔗 MOUNT
+   ========================================================================= */
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <AuthProvider>
+    <App />
+  </AuthProvider>
+);
+</script>
+</body>
+</html>
